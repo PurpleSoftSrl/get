@@ -1,102 +1,109 @@
-import 'dart:async';
 import 'package:flutter/widgets.dart';
-import 'package:get/src/get_main.dart';
+import 'package:get/src/root/smart_management.dart';
+import '../get_instance.dart';
 import 'rx_impl.dart';
 import 'rx_interface.dart';
 
-class GetX<T extends RxController> extends StatefulWidget {
+class GetX<T extends DisposableInterface> extends StatefulWidget {
   final Widget Function(T) builder;
   final bool global;
   // final Stream Function(T) stream;
   // final StreamController Function(T) streamController;
   final bool autoRemove;
+  final bool assignId;
   final void Function(State state) initState, dispose, didChangeDependencies;
+  final void Function(GetX oldWidget, State state) didUpdateWidget;
   final T init;
   const GetX({
     this.builder,
     this.global = true,
     this.autoRemove = true,
     this.initState,
+    this.assignId = false,
     //  this.stream,
     this.dispose,
     this.didChangeDependencies,
+    this.didUpdateWidget,
     this.init,
     // this.streamController
   });
-  _GetXState<T> createState() => _GetXState<T>();
+  GetImplXState<T> createState() => GetImplXState<T>();
 }
 
-class _GetXState<T extends RxController> extends State<GetX<T>> {
+class GetImplXState<T extends DisposableInterface> extends State<GetX<T>> {
   RxInterface _observer;
-  StreamSubscription _listenSubscription;
   T controller;
   bool isCreator = false;
 
-  _GetXState() {
-    _observer = ListX();
-  }
-
   @override
   void initState() {
+    _observer = Rx();
+    bool isPrepared = GetInstance().isPrepared<T>();
+    bool isRegistred = GetInstance().isRegistred<T>();
     if (widget.global) {
-      if (Get.isPrepared<T>()) {
-        isCreator = true;
-        controller = Get.find<T>();
-      } else if (Get.isRegistred<T>() && !Get.isPrepared<T>()) {
-        controller = Get.find<T>();
+      if (isPrepared) {
+        if (GetConfig.smartManagement != SmartManagement.keepFactory) {
+          isCreator = true;
+        }
+        controller = GetInstance().find<T>();
+      } else if (isRegistred) {
+        controller = GetInstance().find<T>();
         isCreator = false;
       } else {
         controller = widget.init;
         isCreator = true;
-        Get.put<T>(controller);
+        GetInstance().put<T>(controller);
       }
     } else {
       controller = widget.init;
       isCreator = true;
+      controller?.onStart();
     }
     if (widget.initState != null) widget.initState(this);
-    if (isCreator) {
-      try {
-        controller?.onInit();
-      } catch (e) {
-        if (Get.isLogEnable) print("Failure on call onInit");
-      }
+    if (isCreator && GetConfig.smartManagement == SmartManagement.onlyBuilder) {
+      controller?.onStart();
     }
-
-    _listenSubscription = _observer.subject.stream.listen((data) {
-      setState(() {});
-    });
+    _observer.subject.stream.listen((data) => setState(() {}));
     super.initState();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.didChangeDependencies != null) {
+      widget.didChangeDependencies(this);
+    }
+  }
+
+  @override
+  void didUpdateWidget(GetX oldWidget) {
+    super.didUpdateWidget(oldWidget as GetX<T>);
+    if (widget.didUpdateWidget != null) widget.didUpdateWidget(oldWidget, this);
   }
 
   @override
   void dispose() {
     if (widget.dispose != null) widget.dispose(this);
-
-    if (isCreator) {
-      if (widget.autoRemove && Get.isRegistred<T>()) {
-        // controller.onClose();
-        Get.delete<T>();
+    if (isCreator || widget.assignId) {
+      if (widget.autoRemove && GetInstance().isRegistred<T>()) {
+        GetInstance().delete<T>();
       }
-      // } else {
-      //   controller.onClose();
     }
-    // controller.onClose();
-    _observer.close();
-    _listenSubscription?.cancel();
 
+    _observer.close();
     controller = null;
     isCreator = null;
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // _observer.close();
-    final observer = Get.obs;
-    Get.obs = this._observer;
+  Widget get notifyChilds {
+    final observer = getObs;
+    getObs = _observer;
     final result = widget.builder(controller);
-    Get.obs = observer;
+    getObs = observer;
     return result;
   }
+
+  @override
+  Widget build(BuildContext context) => notifyChilds;
 }

@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
 void main() {
-  testWidgets("GetController smoke test", (tester) async {
+  Get.lazyPut<Controller2>(() => Controller2());
+  testWidgets("GetxController smoke test", (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: GetX<Controller>(
@@ -32,7 +33,19 @@ void main() {
                 FlatButton(
                   child: Text("increment"),
                   onPressed: () => controller.increment(),
-                )
+                ),
+                GetX<Controller2>(builder: (controller) {
+                  return Text('lazy ${controller.lazy}');
+                }),
+                GetX<Controller>(builder: (controller) {
+                  return Container();
+                }),
+                GetX<ControllerNonGlobal>(
+                    init: ControllerNonGlobal(),
+                    global: false,
+                    builder: (controller) {
+                      return Text('single ${controller.nonGlobal}');
+                    })
               ],
             );
           },
@@ -58,10 +71,20 @@ void main() {
     await tester.pump();
 
     expect(find.text("Count: 2"), findsOneWidget);
+    expect(find.text("lazy 0"), findsOneWidget);
+    expect(find.text("single 0"), findsOneWidget);
   });
 }
 
-class Controller extends RxController {
+class Controller2 extends GetxController {
+  int lazy = 0;
+}
+
+class ControllerNonGlobal extends GetxController {
+  int nonGlobal = 0;
+}
+
+class Controller extends GetxController {
   static Controller get to => Get.find();
 
   var counter = 0.obs;

@@ -2,8 +2,10 @@ import 'package:flutter/widgets.dart';
 import 'package:get/src/routes/bindings_interface.dart';
 import 'transitions_type.dart';
 
-class GetRoute {
-  final Widget page;
+
+class GetPage {
+  final String name;
+  final GetPageBuilder page;
   final bool popGesture;
   final Map<String, String> parameter;
   final String title;
@@ -13,12 +15,14 @@ class GetRoute {
   final bool maintainState;
   final bool opaque;
   final Bindings binding;
+  final List<Bindings> bindings;
   final Widget customTransition;
   final Duration transitionDuration;
   final bool fullscreenDialog;
   final RouteSettings settings;
 
-  const GetRoute({
+  const GetPage({
+    @required this.name,
     @required this.page,
     this.title,
     this.settings,
@@ -30,10 +34,13 @@ class GetRoute {
     this.transitionDuration = const Duration(milliseconds: 400),
     this.popGesture,
     this.binding,
+    this.bindings,
     this.transition,
     this.customTransition,
     this.fullscreenDialog = false,
   })  : assert(page != null),
+        assert(name != null),
         assert(maintainState != null),
         assert(fullscreenDialog != null);
 }
+

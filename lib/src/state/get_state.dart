@@ -1,52 +1,40 @@
-import 'package:flutter/material.dart';
-import '../get_main.dart';
+import 'package:flutter/widgets.dart';
+import 'package:get/src/get_instance.dart';
+import 'package:get/src/root/smart_management.dart';
+import 'package:get/src/rx/rx_interface.dart';
 
-class RealState {
-  final State state;
-  final String id;
-  final bool isCreator;
-  const RealState({this.state, this.id, this.isCreator = false});
-}
+class GetxController extends DisposableInterface {
+  final List<Updater> _updaters = [];
 
-class GetController extends State {
-  List<RealState> _allStates = [];
-
-  /// Update GetBuilder with update(this)
-  void update(GetController controller,
-      [List<String> ids, bool condition = true]) {
-    if (controller == null || !condition) return;
-
-    if (ids == null) {
-      // _allStates[controller.hashCode];
-      _allStates.forEach((rs) {
-        if (rs.state != null && rs.state.mounted) rs.state.setState(() {});
-      });
-    } else {
-      ids.forEach(
-        (s) {
-          //  var all = _allStates[controller.hashCode];
-          _allStates.forEach((rs) {
-            if (rs.state != null && rs.state.mounted && rs.id == s)
-              rs.state.setState(() {});
-          });
-        },
-      );
-    }
+  /// Update GetBuilder with update();
+  void update([List<String> ids, bool condition = true]) {
+    if (!condition) return;
+    (ids == null)
+        ? _updaters.forEach((rs) {
+            rs.updater(() {});
+          })
+        : _updaters
+            .where((element) => ids.contains(element.id))
+            .forEach((rs) => rs.updater(() {}));
   }
 
-  void onClose() async {}
+  @override
   void onInit() async {}
 
   @override
-  Widget build(_) => throw ("build method can't be called");
+  void onReady() async {}
+
+  @override
+  void onClose() async {}
 }
 
-class GetBuilder<T extends GetController> extends StatefulWidget {
-  @required
+class GetBuilder<T extends GetxController> extends StatefulWidget {
   final Widget Function(T) builder;
   final bool global;
   final String id;
+  final String tag;
   final bool autoRemove;
+  final bool assignId;
   final void Function(State state) initState, dispose, didChangeDependencies;
   final void Function(GetBuilder oldWidget, State state) didUpdateWidget;
   final T init;
@@ -54,9 +42,11 @@ class GetBuilder<T extends GetController> extends StatefulWidget {
     Key key,
     this.init,
     this.global = true,
-    this.builder,
+    @required this.builder,
     this.autoRemove = true,
+    this.assignId = false,
     this.initState,
+    this.tag,
     this.dispose,
     this.id,
     this.didChangeDependencies,
@@ -67,84 +57,75 @@ class GetBuilder<T extends GetController> extends StatefulWidget {
   _GetBuilderState<T> createState() => _GetBuilderState<T>();
 }
 
-class _GetBuilderState<T extends GetController> extends State<GetBuilder<T>> {
+class _GetBuilderState<T extends GetxController> extends State<GetBuilder<T>> {
   T controller;
-  RealState real;
+  Updater real;
   bool isCreator = false;
   @override
   void initState() {
     super.initState();
 
     if (widget.global) {
-      if (Get.isPrepared<T>()) {
-        isCreator = true;
-        controller = Get.find<T>();
+      final isPrepared = GetInstance().isPrepared<T>(tag: widget.tag);
+      final isRegistred = GetInstance().isRegistred<T>(tag: widget.tag);
 
-        real = RealState(state: this, id: widget.id, isCreator: isCreator);
-        controller._allStates.add(real);
-      } else if (Get.isRegistred<T>() && !Get.isPrepared<T>()) {
-        controller = Get.find<T>();
+      if (isPrepared) {
+        if (GetConfig.smartManagement != SmartManagement.keepFactory) {
+          isCreator = true;
+        }
+        controller = GetInstance().find<T>(tag: widget.tag);
+        real = Updater(updater: setState, id: widget.id);
+        controller._updaters.add(real);
+      } else if (isRegistred) {
+        controller = GetInstance().find<T>(tag: widget.tag);
         isCreator = false;
-        real = RealState(state: this, id: widget.id, isCreator: isCreator);
-        controller._allStates.add(real);
+        real = Updater(updater: setState, id: widget.id);
+        controller._updaters.add(real);
       } else {
         controller = widget.init;
         isCreator = true;
-
-        real = RealState(state: this, id: widget.id, isCreator: isCreator);
-        controller._allStates.add(real);
-        Get.put<T>(controller);
+        real = Updater(updater: setState, id: widget.id);
+        controller._updaters.add(real);
+        GetInstance().put<T>(controller, tag: widget.tag);
       }
     } else {
       controller = widget.init;
-
       isCreator = true;
-      real = RealState(state: this, id: widget.id, isCreator: isCreator);
-      controller._allStates.add(real);
+      real = Updater(updater: setState, id: widget.id);
+      controller._updaters.add(real);
+      controller?.onStart();
     }
     if (widget.initState != null) widget.initState(this);
-    if (isCreator) {
-      try {
-        controller?.onInit();
-      } catch (e) {
-        if (Get.isLogEnable) print("[GET] error: $e");
-      }
+    if (isCreator && GetConfig.smartManagement == SmartManagement.onlyBuilder) {
+      controller?.onStart();
     }
   }
 
   @override
-  void dispose() async {
+  void dispose() {
     super.dispose();
-
     if (widget.dispose != null) widget.dispose(this);
-
-    if (isCreator) {
-      if (widget.autoRemove && Get.isRegistred<T>()) {
-        // controller.onClose();
-        controller._allStates.remove(real);
-        Get.delete<T>();
+    if (isCreator || widget.assignId) {
+      if (widget.autoRemove && GetInstance().isRegistred<T>(tag: widget.tag)) {
+        controller._updaters.remove(real);
+        GetInstance().delete<T>(tag: widget.tag);
       }
     } else {
-      // controller._allStates[controller].remove(this);
-      controller._allStates.remove(real);
+      controller._updaters.remove(real);
     }
-
-    /// force GC remove this
-    controller = null;
-    real = null;
-    isCreator = null;
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (widget.didChangeDependencies != null)
+    if (widget.didChangeDependencies != null) {
       widget.didChangeDependencies(this);
+    }
   }
 
   @override
   void didUpdateWidget(GetBuilder oldWidget) {
-    super.didUpdateWidget(oldWidget);
+    super.didUpdateWidget(oldWidget as GetBuilder<T>);
     if (widget.didUpdateWidget != null) widget.didUpdateWidget(oldWidget, this);
   }
 
@@ -152,4 +133,10 @@ class _GetBuilderState<T extends GetController> extends State<GetBuilder<T>> {
   Widget build(BuildContext context) {
     return widget.builder(controller);
   }
+}
+
+class Updater {
+  final StateSetter updater;
+  final String id;
+  const Updater({this.updater, this.id});
 }

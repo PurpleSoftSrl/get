@@ -1,160 +1,258 @@
 import 'dart:async';
-import 'package:get/src/get_main.dart';
-import 'rx_callbacks.dart';
 import 'rx_interface.dart';
-import 'rx_model.dart';
-import 'utils/delegate_list.dart';
 
-class _StoredValue<T> implements RxInterface<T> {
-  StreamController<Change<T>> subject = StreamController<Change<T>>.broadcast();
-  StreamController<Change<T>> _changeCtl = StreamController<Change<T>>();
-  Map<Stream<Change<T>>, StreamSubscription> _subscriptions = Map();
+class _RxImpl<T> implements RxInterface<T> {
+  StreamController<T> subject = StreamController<T>.broadcast();
+  Map<Stream<T>, StreamSubscription> _subscriptions = Map();
 
   T _value;
-  T get v {
-    if (Get.obs != null) {
-      Get.obs.addListener(subject.stream);
+  T get value {
+    if (getObs != null) {
+      getObs.addListener(subject.stream);
     }
     return _value;
   }
 
-  T get value => v;
-  set value(T va) => v = va;
-
-  String get string => v.toString();
+  String get string => value.toString();
 
   close() {
     _subscriptions.forEach((observable, subscription) {
       subscription.cancel();
     });
     _subscriptions.clear();
-    _changeCtl.close();
+    subject.close();
   }
 
-  addListener(Stream<Change<T>> rxGetx) {
+  addListener(Stream<T> rxGetx) {
     if (_subscriptions.containsKey(rxGetx)) {
       return;
     }
-
     _subscriptions[rxGetx] = rxGetx.listen((data) {
       subject.add(data);
     });
   }
 
-  set v(T val) {
-    if (_value == val) return;
-    T old = _value;
+  bool firstRebuild = true;
+
+  set value(T val) {
+    if (_value == val && !firstRebuild) return;
+    firstRebuild = false;
     _value = val;
-    subject.add(Change<T>($new: val, $old: old, batch: _cb));
+    subject.add(_value);
   }
 
-  int _cb = 0;
+  Stream<T> get stream => subject.stream;
 
-  _StoredValue([T initial]) : _value = initial {
-    _onChange = subject.stream.asBroadcastStream();
-  }
+  StreamSubscription<T> listen(void Function(T) onData,
+          {Function onError, void Function() onDone, bool cancelOnError}) =>
+      stream.listen(onData, onError: onError, onDone: onDone);
 
-  void setCast(dynamic /* T */ val) => v = val;
-
-  Stream<Change<T>> _onChange;
-
-  Stream<Change<T>> get onChange {
-    _cb++;
-
-    _changeCtl.add(Change<T>($new: v, $old: null, batch: _cb));
-    _changeCtl.addStream(_onChange.skipWhile((v) => v.batch < _cb));
-    return _changeCtl.stream.asBroadcastStream();
-  }
-
-  Stream<T> get stream => onChange.map((c) => c.$new);
-
-  void bind(RxInterface<T> reactive) {
-    v = reactive.v;
-    reactive.stream.listen((va) => v = va);
-  }
-
-  void bindStream(Stream<T> stream) => stream.listen((va) => v = va);
-
-  void bindOrSet(/* T | Stream<T> | Reactive<T> */ other) {
-    if (other is RxInterface<T>) {
-      bind(other);
-    } else if (other is Stream<T>) {
-      bindStream(other.cast<T>());
-    } else {
-      v = other;
-    }
-  }
-
-  StreamSubscription<T> listen(ValueCallback<T> callback) =>
-      stream.listen(callback);
-
+  void bindStream(Stream<T> stream) => stream.listen((va) => value = va);
   Stream<R> map<R>(R mapper(T data)) => stream.map(mapper);
 }
 
-class StringX<String> extends _StoredValue<String> {
-  StringX([String initial]) {
+class RxString<String> extends _RxImpl<String> {
+  RxString([String initial]) {
     _value = initial;
-    _onChange = subject.stream.asBroadcastStream();
   }
 }
 
-class IntX<int> extends _StoredValue<int> {
-  IntX([int initial]) {
+class RxInt<int> extends _RxImpl<int> {
+  RxInt([int initial]) {
     _value = initial;
-    _onChange = subject.stream.asBroadcastStream();
   }
 }
 
-class MapX<Map> extends _StoredValue<Map> {
-  MapX([Map initial]) {
+class RxMap<K, V> extends RxInterface implements Map<K, V> {
+  RxMap([Map<K, V> initial]) {
     _value = initial;
-    _onChange = subject.stream.asBroadcastStream();
   }
-}
-
-// class ListX<List> extends _StoredValue<List> {
-//   ListX([List initial]) {
-//     _value = initial;
-//     _onChange = subject.stream.asBroadcastStream();
-//   }
-// }
-
-class ListX<E> extends DelegatingList<E> implements List<E>, RxInterface<E> {
-  /// Create a list similar to `List<T>`
-  ListX([int length]) : super(length != null ? List<E>(length) : List<E>()) {
-    _onChange = subject.stream.asBroadcastStream();
-  }
-
-  ListX.filled(int length, E fill, {bool growable: false})
-      : super(List<E>.filled(length, fill, growable: growable)) {
-    _onChange = subject.stream.asBroadcastStream();
-  }
-
-  ListX.from(Iterable<E> items, {bool growable: true})
-      : super(List<E>.from(items, growable: growable)) {
-    _onChange = subject.stream.asBroadcastStream();
-  }
-
-  ListX.union(Iterable<E> items, [E item]) : super(items?.toList() ?? <E>[]) {
-    if (item != null) add(item);
-    _onChange = subject.stream.asBroadcastStream();
-  }
-
-  ListX.of(Iterable<E> items, {bool growable: true})
-      : super(List<E>.of(items, growable: growable));
-
-  ListX.generate(int length, E generator(int index), {bool growable: true})
-      : super(List<E>.generate(length, generator, growable: growable));
-
-  Map<Stream<Change<E>>, StreamSubscription> _subscriptions = Map();
-
-  // StreamSubscription _changectl = StreamSubscription();
-
-  StreamController<Change<E>> _changeCtl =
-      StreamController<Change<E>>.broadcast();
 
   @override
-  StreamController<Change<E>> subject = StreamController<Change<E>>.broadcast();
+  StreamController subject = StreamController<Map<K, V>>.broadcast();
+  final Map<Stream<Map<K, V>>, StreamSubscription> _subscriptions = {};
+
+  Map<K, V> _value;
+  Map<K, V> get value {
+    if (getObs != null) {
+      getObs.addListener(subject.stream);
+    }
+    return _value;
+  }
+
+  String get string => value.toString();
+
+  @override
+  void close() {
+    _subscriptions.forEach((observable, subscription) {
+      subscription.cancel();
+    });
+    _subscriptions.clear();
+    subject.close();
+  }
+
+  @override
+  void addListener(Stream rxGetx) {
+    if (_subscriptions.containsKey(rxGetx)) {
+      return;
+    }
+    _subscriptions[rxGetx] = rxGetx.listen((data) {
+      subject.add(data);
+    });
+  }
+
+  set value(Map<K, V> val) {
+    if (_value == val) return;
+    _value = val;
+    subject.add(_value);
+  }
+
+  Stream<Map<K, V>> get stream => subject.stream;
+
+  StreamSubscription<Map<K, V>> listen(void Function(Map<K, V>) onData,
+          {Function onError, void Function() onDone, bool cancelOnError}) =>
+      stream.listen(onData, onError: onError, onDone: onDone);
+
+  void bindStream(Stream<Map<K, V>> stream) =>
+      stream.listen((va) => value = va);
+
+  void add(K key, V value) {
+    _value[key] = value;
+    subject.add(_value);
+  }
+
+  void addIf(condition, K key, V value) {
+    if (condition is Condition) condition = condition();
+    if (condition is bool && condition) {
+      _value[key] = value;
+      subject.add(_value);
+    }
+  }
+
+  void addAllIf(condition, Map<K, V> values) {
+    if (condition is Condition) condition = condition();
+    if (condition is bool && condition) addAll(values);
+  }
+
+  @override
+  V operator [](Object key) {
+    return value[key];
+  }
+
+  @override
+  void operator []=(K key, V value) {
+    _value[key] = value;
+    subject.add(_value);
+  }
+
+  @override
+  void addAll(Map<K, V> other) {
+    _value.addAll(other);
+    subject.add(_value);
+  }
+
+  @override
+  void addEntries(Iterable<MapEntry<K, V>> entries) {
+    _value.addEntries(entries);
+    subject.add(_value);
+  }
+
+  @override
+  void clear() {
+    _value.clear();
+    subject.add(_value);
+  }
+
+  @override
+  Map<K2, V2> cast<K2, V2>() => _value.cast<K2, V2>();
+
+  @override
+  bool containsKey(Object key) => _value.containsKey(key);
+
+  @override
+  bool containsValue(Object value) => _value.containsValue(value);
+
+  @override
+  Iterable<MapEntry<K, V>> get entries => _value.entries;
+
+  @override
+  void forEach(void Function(K, V) f) {
+    _value.forEach(f);
+  }
+
+  @override
+  bool get isEmpty => _value.isEmpty;
+
+  @override
+  bool get isNotEmpty => _value.isNotEmpty;
+
+  @override
+  Iterable<K> get keys => _value.keys;
+
+  @override
+  int get length => value.length;
+
+  @override
+  Map<K2, V2> map<K2, V2>(MapEntry<K2, V2> Function(K, V) transform) =>
+      value.map(transform);
+
+  @override
+  V putIfAbsent(K key, V Function() ifAbsent) {
+    final val = _value.putIfAbsent(key, ifAbsent);
+    subject.add(_value);
+    return val;
+  }
+
+  @override
+  V remove(Object key) {
+    final val = _value.remove(key);
+    subject.add(_value);
+    return val;
+  }
+
+  @override
+  void removeWhere(bool Function(K, V) test) {
+    _value.removeWhere(test);
+    subject.add(_value);
+  }
+
+  @override
+  Iterable<V> get values => value.values;
+
+  @override
+  String toString() => _value.toString();
+
+  @override
+  V update(K key, V Function(V) update, {V Function() ifAbsent}) {
+    final val = _value.update(key, update, ifAbsent: ifAbsent);
+    subject.add(_value);
+    return val;
+  }
+
+  @override
+  void updateAll(V Function(K, V) update) {
+    _value.updateAll(update);
+    subject.add(_value);
+  }
+}
+
+/// Create a list similar to `List<T>`
+class RxList<E> extends Iterable<E> implements RxInterface<E> {
+  RxList([List<E> initial]) {
+    _list = initial;
+  }
+
+  @override
+  Iterator<E> get iterator => _list.iterator;
+
+  @override
+  bool get isEmpty => value.isEmpty;
+
+  @override
+  bool get isNotEmpty => value.isNotEmpty;
+
+  StreamController<E> subject = StreamController<E>.broadcast();
+  Map<Stream<E>, StreamSubscription> _subscriptions = Map();
 
   /// Adds [item] only if [condition] resolves to true.
   void addIf(condition, E item) {
@@ -168,19 +266,23 @@ class ListX<E> extends DelegatingList<E> implements List<E>, RxInterface<E> {
     if (condition is bool && condition) addAll(items);
   }
 
-  operator []=(int index, E value) {
-    super[index] = value;
-    if (Get.obs != null) {
-      Get.obs.addListener(subject.stream);
-    }
-    subject.add(Change<E>.set(item: value, pos: index));
+  operator []=(int index, E val) {
+    _list[index] = val;
+    subject.add(val);
   }
 
-  void _add(E item) => super.add(item);
+  E operator [](int index) {
+    return value[index];
+  }
 
   void add(E item) {
-    super.add(item);
-    subject.add(Change<E>.insert(item: item, pos: length - 1));
+    _list.add(item);
+    subject.add(item);
+  }
+
+  void addAll(Iterable<E> item) {
+    _list.addAll(item);
+    subject.add(null);
   }
 
   /// Adds only if [item] is not null.
@@ -188,33 +290,74 @@ class ListX<E> extends DelegatingList<E> implements List<E>, RxInterface<E> {
     if (item != null) add(item);
   }
 
-  void insert(int index, E item) {
-    super.insert(index, item);
-    subject.add(Change<E>.insert(item: item, pos: index));
+  /// Adds only if [item] is not null.
+  void addAllNonNull(Iterable<E> item) {
+    if (item != null) addAll(item);
   }
 
+  void insert(int index, E item) {
+    _list.insert(index, item);
+    subject.add(item);
+  }
+
+  void insertAll(int index, Iterable<E> iterable) {
+    _list.insertAll(index, iterable);
+    subject.add(iterable.last);
+  }
+
+  int get length => value.length;
+
+  /// Removes an item from the list.
+  ///
+  /// This is O(N) in the number of items in the list.
+  ///
+  /// Returns whether the item was present in the list.
   bool remove(Object item) {
-    int pos = indexOf(item);
-    bool hasRemoved = super.remove(item);
+    bool hasRemoved = _list.remove(item);
     if (hasRemoved) {
-      subject.add(Change<E>.remove(item: item, pos: pos));
+      subject.add(item);
     }
     return hasRemoved;
   }
 
+  E removeAt(int index) {
+    E item = _list.removeAt(index);
+    subject.add(item);
+    return item;
+  }
+
+  E removeLast() {
+    E item = _list.removeLast();
+    subject.add(item);
+    return item;
+  }
+
+  void removeRange(int start, int end) {
+    _list.removeRange(start, end);
+    subject.add(null);
+  }
+
+  void removeWhere(bool Function(E) test) {
+    _list.removeWhere(test);
+    subject.add(null);
+  }
+
   void clear() {
-    super.clear();
-    subject.add(Change<E>.clear());
+    _list.clear();
+    subject.add(null);
+  }
+
+  void sort([int compare(E a, E b)]) {
+    _list.sort();
+    subject.add(null);
   }
 
   close() {
-    clear();
     _subscriptions.forEach((observable, subscription) {
       subscription.cancel();
     });
     _subscriptions.clear();
     subject.close();
-    _changeCtl.close();
   }
 
   /// Replaces all existing items of this list with [item]
@@ -229,17 +372,16 @@ class ListX<E> extends DelegatingList<E> implements List<E>, RxInterface<E> {
     addAll(items);
   }
 
-  /// A stream of record of changes to this list
-  Stream<Change<E>> get onChange {
-    final now = DateTime.now();
-
-    _onChange.skipWhile((m) => m.time.isBefore(now));
-    return _changeCtl.stream.asBroadcastStream();
+  List<E> get value {
+    if (getObs != null) {
+      getObs.addListener(subject.stream);
+    }
+    return _list;
   }
 
-  Stream<Change<E>> _onChange;
+  String get string => value.toString();
 
-  addListener(Stream<Change<E>> rxGetx) {
+  addListener(Stream<E> rxGetx) {
     if (_subscriptions.containsKey(rxGetx)) {
       return;
     }
@@ -248,163 +390,88 @@ class ListX<E> extends DelegatingList<E> implements List<E>, RxInterface<E> {
     });
   }
 
-  List<E> get value => v as List<E>;
-
-  set value(List<E> va) => assignAll(va);
-
-  @override
-  get v {
-    if (Get.obs != null) {
-      Get.obs.addListener(subject.stream);
-    }
-    return this;
+  set value(Iterable<E> val) {
+    if (_list == val) return;
+    _list = val;
+    subject.add(null);
   }
 
-  set v(E val) {
-    assign(val);
-  }
+  Stream<E> get stream => subject.stream;
 
-  @override
-  Stream<E> get stream => onChange.map((c) => c.item);
+  StreamSubscription<E> listen(void Function(E) onData,
+          {Function onError, void Function() onDone, bool cancelOnError}) =>
+      stream.listen(onData, onError: onError, onDone: onDone);
 
-  @override
-  void bind(RxInterface<E> reactive) {
-    v = reactive.v;
-    reactive.stream.listen((va) => v = va);
-  }
+  void bindStream(Stream<Iterable<E>> stream) =>
+      stream.listen((va) => value = va);
 
-  void bindStream(Stream<E> stream) => stream.listen((va) => v = va);
-
-  @override
-  void bindOrSet(/* T | Stream<T> or Rx<T> */ other) {
-    if (other is RxInterface<E>) {
-      bind(other);
-    } else if (other is Stream<E>) {
-      bindStream(other.cast<E>());
-    } else {
-      v = other;
-    }
-  }
-
-  @override
-  StreamSubscription<E> listen(ValueCallback<E> callback) =>
-      stream.listen(callback);
-
-  @override
-  void setCast(dynamic val) => v = val;
+  List<E> _list = <E>[];
 }
+
+RxInterface getObs;
 
 typedef bool Condition();
 
 typedef E ChildrenListComposer<S, E>(S value);
 
-/// An observable list that is bound to another list [binding]
-class BindingList<S, E> extends ListX<E> {
-  final ListX<S> binding;
-
-  final ChildrenListComposer<S, E> composer;
-
-  BindingList(this.binding, this.composer) {
-    for (S v in binding) _add(composer(v));
-    binding.onChange.listen((Change<S> n) {
-      if (n.op == ListChangeOp.add) {
-        insert(n.pos, composer(n.item));
-      } else if (n.op == ListChangeOp.remove) {
-        removeAt(n.pos);
-      } else if (n.op == ListChangeOp.clear) {
-        clear();
-      }
-    });
-  }
-}
-
-class BoolX<bool> extends _StoredValue<bool> {
-  BoolX([bool initial]) {
+class RxBool<bool> extends _RxImpl<bool> {
+  RxBool([bool initial]) {
     _value = initial;
-    _onChange = subject.stream.asBroadcastStream();
   }
 }
 
-class DoubleX<double> extends _StoredValue<double> {
-  DoubleX([double initial]) {
+class RxDouble<double> extends _RxImpl<double> {
+  RxDouble([double initial]) {
     _value = initial;
-    _onChange = subject.stream.asBroadcastStream();
   }
 }
 
-class NumX<num> extends _StoredValue<num> {
-  NumX([num initial]) {
+class RxNum<num> extends _RxImpl<num> {
+  RxNum([num initial]) {
     _value = initial;
-    _onChange = subject.stream.asBroadcastStream();
   }
 }
 
-class Rx<T> extends _StoredValue<T> {
+class Rx<T> extends _RxImpl<T> {
   Rx([T initial]) {
     _value = initial;
-    _onChange = subject.stream.asBroadcastStream();
   }
 }
 
 extension StringExtension on String {
-  StringX<String> get obs {
-    if (this != null)
-      return StringX(this);
-    else
-      return StringX(null);
-  }
+  RxString<String> get obs => RxString(this);
 }
 
 extension IntExtension on int {
-  IntX<int> get obs {
-    if (this != null)
-      return IntX(this);
-    else
-      return IntX(null);
-  }
+  RxInt<int> get obs => RxInt(this);
 }
 
 extension DoubleExtension on double {
-  DoubleX<double> get obs {
-    if (this != null)
-      return DoubleX(this);
-    else
-      return DoubleX(null);
-  }
+  RxDouble<double> get obs => RxDouble(this);
 }
 
-extension MapExtension on Map {
-  MapX<Map> get obs {
+extension BoolExtension on bool {
+  RxBool<bool> get obs => RxBool(this);
+}
+
+extension MapExtension<K, V> on Map<K, V> {
+  RxMap<K, V> get obs {
     if (this != null)
-      return MapX(this);
+      return RxMap<K, V>({})..addAll(this);
     else
-      return MapX(null);
+      return RxMap<K, V>(null);
   }
 }
 
 extension ListExtension<E> on List<E> {
-  ListX<E> get obs {
+  RxList<E> get obs {
     if (this != null)
-      return ListX<E>()..assignAll(this);
+      return RxList<E>([])..addAllNonNull(this);
     else
-      return ListX<E>(null);
-  }
-}
-
-extension BoolExtension on bool {
-  BoolX<bool> get obs {
-    if (this != null)
-      return BoolX(this);
-    else
-      return BoolX(null);
+      return RxList<E>(null);
   }
 }
 
 extension ObjectExtension on Object {
-  Rx<Object> get obs {
-    if (this != null)
-      return Rx(this);
-    else
-      return Rx(null);
-  }
+  Rx<Object> get obs => Rx(this);
 }

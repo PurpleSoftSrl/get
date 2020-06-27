@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
-
+import 'package:get/src/root/smart_management.dart';
+import '../../get_instance.dart';
 import '../../get_main.dart';
 
 class Routing {
@@ -44,13 +45,17 @@ class GetObserver extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic> previousRoute) {
     if ('${route?.settings?.name}' == 'snackbar') {
-      if (Get.isLogEnable) print("[OPEN SNACKBAR] ${route?.settings?.name}");
+      if (GetConfig.isLogEnable)
+        print("[OPEN SNACKBAR] ${route?.settings?.name}");
     } else if ('${route?.settings?.name}' == 'bottomsheet') {
-      if (Get.isLogEnable) print("[OPEN BOTTOMSHEET] ${route?.settings?.name}");
+      if (GetConfig.isLogEnable)
+        print("[OPEN BOTTOMSHEET] ${route?.settings?.name}");
     } else if ('${route?.settings?.name}' == 'dialog') {
-      if (Get.isLogEnable) print("[OPEN DIALOG] ${route?.settings?.name}");
+      if (GetConfig.isLogEnable)
+        print("[OPEN DIALOG] ${route?.settings?.name}");
     } else {
-      if (Get.isLogEnable) print("[GOING TO ROUTE] ${route?.settings?.name}");
+      if (GetConfig.isLogEnable)
+        print("[GOING TO ROUTE] ${route?.settings?.name}");
     }
 
     isSnackbar = '${route?.settings?.name}' == 'snackbar';
@@ -76,6 +81,7 @@ class GetObserver extends NavigatorObserver {
     if (routing != null) {
       routing(routeSend);
     }
+    GetConfig.currentRoute = current;
     Get.setRouting(routeSend);
   }
 
@@ -84,16 +90,20 @@ class GetObserver extends NavigatorObserver {
     super.didPop(route, previousRoute);
 
     if ('${route?.settings?.name}' == 'snackbar') {
-      if (Get.isLogEnable) print("[CLOSE SNACKBAR] ${route?.settings?.name}");
+      if (GetConfig.isLogEnable)
+        print("[CLOSE SNACKBAR] ${route?.settings?.name}");
     } else if ('${route?.settings?.name}' == 'bottomsheet') {
-      if (Get.isLogEnable)
+      if (GetConfig.isLogEnable)
         print("[CLOSE BOTTOMSHEET] ${route?.settings?.name}");
     } else if ('${route?.settings?.name}' == 'dialog') {
-      if (Get.isLogEnable) print("[CLOSE DIALOG] ${route?.settings?.name}");
-    } else if ('${route?.settings?.name}' == 'snackbar') {
-      if (Get.isLogEnable) print("[CLOSE SNACKBAR] ${route?.settings?.name}");
+      if (GetConfig.isLogEnable)
+        print("[CLOSE DIALOG] ${route?.settings?.name}");
     } else {
-      if (Get.isLogEnable) print("[BACK ROUTE] ${route?.settings?.name}");
+      if (GetConfig.isLogEnable) print("[BACK ROUTE] ${route?.settings?.name}");
+    }
+
+    if (GetConfig.smartManagement != SmartManagement.onlyBuilder) {
+      GetInstance().removeDependencyByRoute("${route?.settings?.name}");
     }
 
     isSnackbar = false;
@@ -120,14 +130,20 @@ class GetObserver extends NavigatorObserver {
     if (routing != null) {
       routing(routeSend);
     }
+    GetConfig.currentRoute = current;
     Get.setRouting(routeSend);
   }
 
   @override
   void didReplace({Route newRoute, Route oldRoute}) {
     super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
-    if (Get.isLogEnable) print("[REPLACE ROUTE] ${oldRoute?.settings?.name}");
-    if (Get.isLogEnable) print("[NEW ROUTE] ${newRoute?.settings?.name}");
+    if (GetConfig.isLogEnable)
+      print("[REPLACE ROUTE] ${oldRoute?.settings?.name}");
+    if (GetConfig.isLogEnable) print("[NEW ROUTE] ${newRoute?.settings?.name}");
+
+    if (GetConfig.smartManagement == SmartManagement.full) {
+      GetInstance().removeDependencyByRoute("${oldRoute?.settings?.name}");
+    }
 
     isSnackbar = false;
     isDialog = false;
@@ -149,13 +165,20 @@ class GetObserver extends NavigatorObserver {
     if (routing != null) {
       routing(routeSend);
     }
+    GetConfig.currentRoute = current;
     Get.setRouting(routeSend);
   }
 
   @override
   void didRemove(Route route, Route previousRoute) {
     super.didRemove(route, previousRoute);
-    if (Get.isLogEnable) print("[REMOVING ROUTE] ${route?.settings?.name}");
+    if (GetConfig.isLogEnable)
+      print("[REMOVING ROUTE] ${route?.settings?.name}");
+
+    if (GetConfig.smartManagement == SmartManagement.full) {
+      GetInstance().removeDependencyByRoute("${route?.settings?.name}");
+    }
+
     final routeSend = Routing(
       isBack: false,
       route: previousRoute,
@@ -173,6 +196,7 @@ class GetObserver extends NavigatorObserver {
     if (routing != null) {
       routing(routeSend);
     }
+    GetConfig.currentRoute = current;
     Get.setRouting(routeSend);
   }
 }
